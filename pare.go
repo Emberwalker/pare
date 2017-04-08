@@ -12,6 +12,8 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 //noinspection GoUnusedConst
@@ -46,6 +48,19 @@ type DeleteResponse struct {
 	Status string `json:"status"`
 }
 
+type MetaResponse struct {
+	FullUrl string       `json:"full_url"`
+	Meta    LinkMetadata `json:"meta"`
+}
+
+type LinkMetadata struct {
+	Owner    string    `json:"owner"`
+	Time     time.Time `json:"time"`
+	UserMeta string    `json:"user_meta,omitempty"`
+}
+
+type Empty struct{}
+
 var (
 	kingpinApp = kingpin.New("pare", "Command-line interface to the Condenser URL shortening service.")
 	debugFlag  = kingpinApp.Flag("debug", "Enable debug output.").Bool()
@@ -60,6 +75,10 @@ var (
 	rmCommand      = kingpinApp.Command("delete", "Delete a shortcode.").Alias("del").Alias("rm")
 	rmShortcodeArg = rmCommand.Arg("code", "Code to delete.").Required().String()
 	failNoexistArg = rmCommand.Flag("fail-no-exist", "Return non-zero exit if code didn't exist.").Bool()
+
+	metaCommand = kingpinApp.Command("meta", "Get metadata for a code.")
+	metaJsonOut = metaCommand.Flag("json", "Output JSON instead of human-readable.").Bool()
+	metaCodeArg = metaCommand.Arg("code", "Code to fetch metadata for.").Required().String()
 )
 
 func main() {
@@ -70,6 +89,9 @@ func main() {
 	case rmCommand.FullCommand():
 		debug("rm: %s", *rmShortcodeArg)
 		rm()
+	case metaCommand.FullCommand():
+		debug("meta: %s", *metaCodeArg)
+		meta()
 	}
 }
 
@@ -81,7 +103,11 @@ func shorten() {
 	}
 	respStruct := &ShortenResponse{}
 
-	doPostRequest(ShortenEndpoint, bodyStruct, respStruct)
+	code := doRequest(http.MethodPost, ShortenEndpoint, bodyStruct, respStruct)
+	if code != 200 {
+		err := errors.New(fmt.Sprintf("unexpected response code: %v", code))
+		kingpin.FatalIfError(err, "unexpected response")
+	}
 
 	fmt.Printf("%s\n", respStruct.ShortUrl)
 }
@@ -92,7 +118,10 @@ func rm() {
 	}
 	respStruct := &DeleteResponse{}
 
-	doPostRequest(DeleteEndpoint, bodyStruct, respStruct)
+	code := doRequest(http.MethodPost, DeleteEndpoint, bodyStruct, respStruct)
+	if code != 200 {
+		kingpin.Fatalf("unexpected response code: %v", code)
+	}
 
 	fmt.Printf("%s/%s\n", respStruct.Code, respStruct.Status)
 	if *failNoexistArg && respStruct.Status == "noexist" {
@@ -100,30 +129,60 @@ func rm() {
 	}
 }
 
-func doPostRequest(endpoint string, body interface{}, response interface{}) {
+func meta() {
+	respStruct := &MetaResponse{}
+
+	code := doRequest(http.MethodGet, MetaEndpoint+*metaCodeArg, Empty{}, respStruct)
+	if code == 404 {
+		fmt.Println("noexist")
+		os.Exit(1)
+	} else if code != 200 {
+		kingpin.Fatalf("unexpected response code: %v", code)
+	}
+
+	if *metaJsonOut {
+		// JSON output
+		txt, err := json.MarshalIndent(respStruct, "", "  ")
+		kingpin.FatalIfError(err, "error marshalling to JSON")
+		fmt.Println(string(txt))
+	} else {
+		// Human output
+		fmt.Printf("Code: %s\n", strings.ToUpper(*metaCodeArg))
+		fmt.Printf("Full URL: %s\n", respStruct.FullUrl)
+		fmt.Printf("Owner: %s\n", respStruct.Meta.Owner)
+		fmt.Printf("Created at: %s\n", respStruct.Meta.Time.Format(time.UnixDate))
+		if respStruct.Meta.UserMeta != "" {
+			fmt.Printf("User-defined metadata: %s\n", respStruct.Meta.UserMeta)
+		}
+	}
+}
+
+func doRequest(method string, endpoint string, body interface{}, response interface{}) int {
 	config := serverDetails()
 	debug("config: %+v", config)
 
 	txBody, err := json.Marshal(body)
 	kingpin.FatalIfError(err, "error creating shorten POST json")
 	debug("txBody: %#v", string(txBody))
-	req := makeRequest(config, http.MethodPost, endpoint, bytes.NewReader(txBody))
+	req := makeRequest(config, method, endpoint, bytes.NewReader(txBody))
 	debug("req: %#v", req)
 
 	client := http.DefaultClient
 	resp, err := client.Do(req)
 	kingpin.FatalIfError(err, "error executing POST to condenser server")
-	if resp.StatusCode != 200 {
-		err = errors.New(fmt.Sprintf("unexpected response code: %v", resp.StatusCode))
-		kingpin.FatalIfError(err, "unexpected response")
-	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return resp.StatusCode
+	}
 
 	rxBody, err := ioutil.ReadAll(resp.Body)
 	kingpin.FatalIfError(err, "error reading response")
 	debug("rxBody: %#v", string(rxBody))
 	err = json.Unmarshal(rxBody, &response)
 	kingpin.FatalIfError(err, "error parsing response")
+
+	return resp.StatusCode
 }
 
 func serverDetails() *Config {
