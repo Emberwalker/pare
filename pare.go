@@ -75,7 +75,7 @@ func main() {
 
 func shorten() {
 	bodyStruct := &ShortenRequest{
-		Url:       shortenUrlArg.String(),
+		Url:       (*shortenUrlArg).String(),
 		Shortcode: shortcodeArg,
 		Meta:      metaArg,
 	}
