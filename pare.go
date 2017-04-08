@@ -83,7 +83,7 @@ func shorten() {
 
 	doPostRequest(ShortenEndpoint, bodyStruct, respStruct)
 
-	fmt.Printf("%s", respStruct.ShortUrl)
+	fmt.Printf("%s\n", respStruct.ShortUrl)
 }
 
 func rm() {
@@ -94,7 +94,7 @@ func rm() {
 
 	doPostRequest(DeleteEndpoint, bodyStruct, respStruct)
 
-	fmt.Printf("%s/%s", respStruct.Code, respStruct.Status)
+	fmt.Printf("%s/%s\n", respStruct.Code, respStruct.Status)
 	if *failNoexistArg && respStruct.Status == "noexist" {
 		os.Exit(1)
 	}
