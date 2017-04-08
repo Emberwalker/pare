@@ -28,9 +28,9 @@ type Config struct {
 }
 
 type ShortenRequest struct {
-	Url       string  `json:"url"`
-	Shortcode *string `json:"code"`
-	Meta      *string `json:"meta"`
+	Url       string `json:"url"`
+	Shortcode string `json:"code,omitempty"`
+	Meta      string `json:"meta,omitempty"`
 }
 
 type ShortenResponse struct {
@@ -53,8 +53,8 @@ var (
 	apiKeyFlag = kingpinApp.Flag("apikey", "Condenser API key (overriding on-disk config).").String()
 
 	shortenCommand = kingpinApp.Command("shorten", "Shorten a URL.").Alias("short").Default()
-	shortcodeArg   = shortenCommand.Flag("code", "Code to shorten to (random if unspecified).").String()
-	metaArg        = shortenCommand.Flag("meta", "User-defined metadata.").String()
+	shortcodeArg   = shortenCommand.Flag("code", "Code to shorten to (random if unspecified).").Default("").String()
+	metaArg        = shortenCommand.Flag("meta", "User-defined metadata.").Default("").String()
 	shortenUrlArg  = shortenCommand.Arg("url", "URL to shorten.").Required().URL()
 
 	rmCommand      = kingpinApp.Command("delete", "Delete a shortcode.").Alias("del").Alias("rm")
@@ -76,8 +76,8 @@ func main() {
 func shorten() {
 	bodyStruct := &ShortenRequest{
 		Url:       (*shortenUrlArg).String(),
-		Shortcode: shortcodeArg,
-		Meta:      metaArg,
+		Shortcode: *shortcodeArg,
+		Meta:      *metaArg,
 	}
 	respStruct := &ShortenResponse{}
 
