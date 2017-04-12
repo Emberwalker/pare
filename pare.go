@@ -104,7 +104,10 @@ func shorten() {
 	respStruct := &ShortenResponse{}
 
 	code := doRequest(http.MethodPost, ShortenEndpoint, bodyStruct, respStruct)
-	if code != 200 {
+	if code == 409 {
+		errPrintf("conflict")
+		os.Exit(-1)
+	} else if code != 200 {
 		err := errors.New(fmt.Sprintf("unexpected response code: %v", code))
 		kingpin.FatalIfError(err, "unexpected response")
 	}
@@ -159,11 +162,11 @@ func meta() {
 
 func doRequest(method string, endpoint string, body interface{}, response interface{}) int {
 	config := serverDetails()
-	debug("config: %+v", config)
+	debug("config: %+v", *config)
 
 	txBody, err := json.Marshal(body)
 	kingpin.FatalIfError(err, "error creating shorten POST json")
-	debug("txBody: %#v", string(txBody))
+	debug("txBody: %v", string(txBody))
 	req := makeRequest(config, method, endpoint, bytes.NewReader(txBody))
 	debug("req: %#v", req)
 
@@ -178,7 +181,7 @@ func doRequest(method string, endpoint string, body interface{}, response interf
 
 	rxBody, err := ioutil.ReadAll(resp.Body)
 	kingpin.FatalIfError(err, "error reading response")
-	debug("rxBody: %#v", string(rxBody))
+	debug("rxBody: %v", string(rxBody))
 	err = json.Unmarshal(rxBody, &response)
 	kingpin.FatalIfError(err, "error parsing response")
 
@@ -230,6 +233,10 @@ func makeRequest(conf *Config, method string, endpoint string, body io.Reader) *
 
 func debug(fmat string, objs ...interface{}) {
 	if *debugFlag {
-		fmt.Fprintf(os.Stderr, fmat+"\n", objs...)
+		errPrintf(fmat, objs)
 	}
+}
+
+func errPrintf(fmat string, objs ...interface{}) {
+	fmt.Fprintf(os.Stderr, fmat+"\n", objs...)
 }
